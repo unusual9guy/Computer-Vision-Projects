@@ -2,29 +2,27 @@ import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 
-def displayImage(image, windowname):    
-    cv2.imshow(windowname, image) 
     
-    
+# Convolving the image
 def convolve_image(image, kernel):
     # Getting the  image and kernel dimensions
     image_height = image.shape[0]
     image_width = image.shape[1]
     kernel_height = kernel.shape[0]
     kernel_width = kernel.shape[1]
+    
 
-    # Calcultaing padding for handling edges
+    # Calcultaing padding dimensions for handling edges
     pad_height = (kernel_height - 1) // 2
     pad_width = (kernel_width - 1) // 2
 
     # Creating padded image
-    padded_image = np.pad(image, ((pad_height, pad_height), (pad_width, pad_width)), mode='constant')
+    padded_image = pad_image(image, pad_height, pad_width)  
 
     # Initializing the output image with zeros
     output_image = np.zeros_like(image)
 
-
-    # Looping through each pixel location, the looping is in the opposite order to be more efficient - have to explain properly why 
+    # looping reversely is more efficient
     for y in range(image_height):
         for x in range(image_width):
             # Extract the region of interest around the current pixel
@@ -35,7 +33,15 @@ def convolve_image(image, kernel):
     return output_image 
 
 
+def pad_image(image, pad_height, pad_width, pad_value=0):
+    padded_height = image.shape[0] + 2 * pad_height
+    padded_width = image.shape[1] + 2 * pad_width
+    padded_image = np.full((padded_height, padded_width), pad_value, dtype=image.dtype)
+    padded_image[pad_height:-pad_height, pad_width:-pad_width] = image
+    return padded_image
+    
 
+# calculating the x & y gradient and edge-strength 
 def compute_sobel_gradients(smoothed_image):
 
     # Converting to float32 for calculations and to avoid overflow while using the normalization function
@@ -51,57 +57,43 @@ def compute_sobel_gradients(smoothed_image):
                                [ 0,  0,  0], 
                                [ 1,  2,  1]])
     
-    # # Pad the image to handle edges 
-    # pad_height = (sobel_x_kernel.shape[0] - 1) // 2
-    # pad_width = (sobel_x_kernel.shape[1] - 1) // 2
-    # padded_image = np.pad(smoothed_image, ((pad_height, pad_height), (pad_width, pad_width)), mode='constant')
-
-    # # Output images
-    # gradient_x = np.zeros_like(smoothed_image)
-    # gradient_y = np.zeros_like(smoothed_image)
-
-#    # Loop over the image, applying the kernels
-#     for y in range(smoothed_image.shape[0]):
-#         for x in range(smoothed_image.shape[1]):
-#             # Extract region of interest (ROI)
-#             roi = padded_image[y:y + sobel_x_kernel.shape[0], x:x + sobel_x_kernel.shape[1]]
-
-#             # Element-wise multiplication and summation
-#             gradient_x[y, x] = np.sum(roi * sobel_x_kernel)
-#             gradient_y[y, x] = np.sum(roi * sobel_y_kernel)
-
     # calculating the gradient_x and gradient_y using the convolution function
     gradient_x = convolve_image(smoothed_image, sobel_x_kernel)
     gradient_y = convolve_image(smoothed_image, sobel_y_kernel)
     
     
-    # Calculate gradient magnitude
+    # Calculating gradient magnitude
     gradient_magnitude = np.sqrt(gradient_x**2 + gradient_y**2)
 
     # Normalizing 
-    gradient_x = cv2.normalize(gradient_x, None, 0, 255, cv2.NORM_MINMAX, dtype=cv2.CV_8U)
-    gradient_y = cv2.normalize(gradient_y, None, 0, 255, cv2.NORM_MINMAX, dtype=cv2.CV_8U)
-    gradient_magnitude = cv2.normalize(gradient_magnitude, None, 0, 255, cv2.NORM_MINMAX, dtype=cv2.CV_8U)
+    gradient_x = normalize(gradient_x)
+    gradient_y = normalize(gradient_y)
+    gradient_magnitude = normalize(gradient_magnitude)
 
     return gradient_x, gradient_y, gradient_magnitude
 
 
-# def gaussian_kernel(sigma, kernel_size):
-#     kernel = np.fromfunction(
-#         lambda x, y: (1/(2*sigma**2)) * np.exp(-((x-(kernel_size-1)/2)**2 + (y-(kernel_size-1)/2)**2) / (2*sigma**2)),
-#         (kernel_size, kernel_size)
-#     )
-#     return kernel / np.sum(kernel)
+
+# Normalization 
+def normalize(array):
+    min = array.min()
+    max = array.max()
+    range = max - min
+    return (255 * (array - min) / range).astype('uint8')  # Scaling to 0-255, converting to 8-bit 
+
 
 def gaussian_kernel(sigma, kernel_size):
-    """Calculates a 2D Gaussian kernel array."""
-    center = (kernel_size - 1) / 2
+    if kernel_size % 2 == 0:
+        raise ValueError("Kernel size must be an odd number.")
+
+    center = (kernel_size - 1) // 2  
     x, y = np.mgrid[-center:center+1, -center:center+1]
 
-    g = np.exp(-(x**2 + y**2) / (2 * sigma**2))
-    return g / np.sum(g) 
+    # decomposable gaussian 
+    g = np.exp((-x**2)/(2*sigma**2)) * np.exp((-y**2)/(2*sigma**2)) 
+    return g / g.sum()  # Shorter normalization
 
-# doing manual thresholding using only one threshold values
+# thresholding the image
 def threshold_with_one(image, initial_threshold):
     # initializing the image with zeros first
     thresholded_image = np.zeros_like(image)    
@@ -110,44 +102,11 @@ def threshold_with_one(image, initial_threshold):
         for x in range(image.shape[1]):
             if image[y, x] > initial_threshold:
                 thresholded_image[y, x] = 255
+            else :
+                thresholded_image[y,x] = 0
 
     return thresholded_image
 
-# doing manual thresholding using two thresholding - using a range
-def threshold_with_two(image, low_threshold, high_threshold):
-    thresholded_image = np.zeros_like(image)
-
-    def check_neighbors(y, x):
-        """Recursive function to explore connected pixels."""
-        for dy in [-1, 0, 1]:
-            for dx in [-1, 0, 1]:
-                ny, nx = y + dy, x + dx
-                if 0 <= ny < image.shape[0] and 0 <= nx < image.shape[1]:
-                    if thresholded_image[ny, nx] == 255:  # Connected to a strong edge
-                        return True
-        return False  # Not connected
-
-    for y in range(image.shape[0]):
-        for x in range(image.shape[1]):
-            if image[y, x] > high_threshold:
-                thresholded_image[y, x] = 255
-            elif image[y, x] >= low_threshold:
-                if check_neighbors(y, x):
-                    thresholded_image[y, x] = 255
-
-    return thresholded_image
-
-def adaptive_threshold_blur_subtract(image, blur_kernel_size, subtract_weight, threshold):
-    # Apply Gaussian Blur
-    blurred_image = cv2.GaussianBlur(image, (blur_kernel_size, blur_kernel_size), 0)
-
-    # Subtract a weighted portion of the blurred image
-    subtracted_image = image - subtract_weight * blurred_image
-
-    # Apply normal thresholding
-    ret, thresholded_image = cv2.threshold(subtracted_image, threshold, 255, cv2.THRESH_BINARY)
-
-    return thresholded_image
 
 def plot_histogram(gradient_magnitude_normal_avg, gradient_magnitude_weighted_avg):
     fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(10, 5))  
@@ -163,92 +122,72 @@ def plot_histogram(gradient_magnitude_normal_avg, gradient_magnitude_weighted_av
     # Adjust spacing and layout for better visibility
     fig.tight_layout()
     plt.show()
+    
+    
+
 
 # MAIN -------------------------------------------------------------------------------------------------------------------------------
 
 # Loading the image
-image = cv2.imread('kitty.bmp', cv2.IMREAD_GRAYSCALE)  
-# image = cv2.imread('Screenshot 2024-02-21 183216.png', cv2.IMREAD_GRAYSCALE)
+original_image = cv2.imread('kitty.bmp', cv2.IMREAD_GRAYSCALE)  
 
-if image is None:
+if original_image is None:
     print('Could not read image')
     exit(-1)
  
-# Creating the normal average kernel(no weighted mean)   
-avg_kernel = np.ones((3, 3)) /9
-# avg_kernel = np.ones((7, 7)) /49
-smoothed_image = convolve_image(image, avg_kernel)
+# Creating the normal average kernel
+size = 7
+normal_avg_kernel = np.ones((size, size)) / (size * size)
+
+ 
 
 # creating a weighted average kernel - Gaussian kernel (by choosing sigma)
-sigma = 7 
-kernel_size = 3
+sigma = 2.5
+kernel_size = 7
 weighted_avg_kernel = gaussian_kernel(sigma, kernel_size)   
 
-# or making it manually
-# weighted_avg_kernel = np.array([[1, 2, 1], 
-#                                 [2, 4, 2],  
-#                                 [1, 2, 1]]) / 12
 
+# calculating the blurred image using normal and weighted mean 
+smoothed_normal_avg_image = convolve_image(original_image, normal_avg_kernel)
+smoothed_weighted_avg_image = convolve_image(original_image, weighted_avg_kernel)
 
-
-# calculating the blurred/smoothened image
-smoothed_weighted_avg_image = convolve_image(image, weighted_avg_kernel)
-
-# computing the gradient_x , gradient_y and gradient magnitude/ edge-strength ------------------------ORIGINAL--------------------------
-gradient_x, gradient_y, gradient_magnitude = compute_sobel_gradients(smoothed_image)
 
 # calculating gradients for different smoothened image 
-_, _, gradient_magnitude_normal_avg = compute_sobel_gradients(smoothed_image)
-_, _, gradient_magnitude_weighted_avg = compute_sobel_gradients(smoothed_weighted_avg_image)
+gradient_x_normal_avg, gradient_y_normal_avg, gradient_magnitude_normal_avg = compute_sobel_gradients(smoothed_normal_avg_image)
+gradient_x_weighted_avg, gradient_y_weighted_avg, gradient_magnitude_weighted_avg = compute_sobel_gradients(smoothed_weighted_avg_image)
 
-#  Thresholding image 
-initial_threshold = 30
-# for one threshold value
-threshold_image_one = threshold_with_one(gradient_magnitude, initial_threshold)
+# Thresholding image 
+initial_threshold = 35
 
-# Experiment with different type of smoothing
+# Experiment with different type of smoothing - normal and gaussian
 threshold_image_one_normal_avg = threshold_with_one(gradient_magnitude_normal_avg, initial_threshold)
 threshold_image_one_weighted_avg = threshold_with_one(gradient_magnitude_weighted_avg, initial_threshold)
 
-cv2.imwrite("Threshold_with_normal_avg.png", threshold_image_one_normal_avg)  
-cv2.imwrite("Threshold_with_weighted_avg.png", threshold_image_one_weighted_avg)  
-
-# for two threshold value 
-alpha = 64
-beta = 120 # have to figure out suitable values
-threshold_image_two = threshold_with_two(gradient_magnitude, alpha, beta)
-
-# for adaptive thresholding 
-subtract_weight = 0.5 # have to figure out 
-kernel_size = 5 # have to figure out 
-threshold_adaptive = adaptive_threshold_blur_subtract(gradient_magnitude, kernel_size, subtract_weight, initial_threshold)
-
-# creating a list of images to print
-images = [image, smoothed_image, gradient_x, gradient_y, gradient_magnitude, threshold_image_one]
-# creating a list of window names for the images
-windownames = ['Original image','Smoothed image','Gradient X', 'Gradient Y', 'Edge', 'Threshold Image']
-
-# threshold images only
-t_images = [gradient_magnitude, threshold_image_one, threshold_image_two, threshold_adaptive]
-t_windownames = ['Edge', 'Threshold Image - one', 'Threshold Image - two', 'Adaptive']
 
 
-# Displaying the images 
+# Displaying the images for Normal Average 
+images_normal_avg = [original_image, smoothed_normal_avg_image, gradient_x_normal_avg, gradient_y_normal_avg, gradient_magnitude_normal_avg, threshold_image_one_normal_avg]
+# Combinig images for normal average into a single big image
+combined_image_normal_avg = np.hstack(images_normal_avg)
 
-# for i in range(len(t_images)):
-#     displayImage(t_images[i], t_windownames[i])
-    
-for i in range(len(images)):
-    displayImage(images[i], windownames[i])
-    
-# Calculate and plot histogram
+
+# Displaying the images for Weighted Average
+images_weighted_avg = [original_image, smoothed_weighted_avg_image, gradient_x_weighted_avg, gradient_y_weighted_avg, gradient_magnitude_weighted_avg, threshold_image_one_weighted_avg]
+# Combining images for weighted average
+combined_image_weighted_avg = np.hstack(images_weighted_avg) 
+
+
+
+# Display the combined image
+cv2.imshow("Normal Average Images", combined_image_normal_avg)
+cv2.imshow("Weighted Average Images", combined_image_weighted_avg)
+
+# plotting histogram
 plot_histogram(gradient_magnitude_normal_avg, gradient_magnitude_weighted_avg)
 
     
 while True:
     key = cv2.waitKey(1)  # Capture key press
-
-    # Check if either spacebar (ASCII 32) or Tab (ASCII 9) is pressed
     if key == ord(' ') or key == 9:  
         break
 cv2.destroyAllWindows()
