@@ -162,14 +162,14 @@ def visualize_matches(image1, keypoints1, image2, keypoints2, matches, save_path
 
     return result_img
 
+# creating the path to the relevant folders
+os.chdir(r"C:\Users\DELL\Desktop\Computer-Vision-Projects\Local feature detection and matching")
 
-    
 def load_image(image_path):
+    script_dir = os.path.dirname(os.path.abspath(__file__))  # Get script's directory
+    image_path = os.path.join(script_dir, 'reference images', image_path)
     return cv2.imread(image_path)
 
-# def display_images():
-    
-    
 
 
 def resize_image(image, max_height=800, max_width=1000):
@@ -208,10 +208,14 @@ def calculate_no_of_keypoints(R, orientations, window_size):
 def plot_thres_values(images, window_size = 7):
     thresholds = np.linspace(0.01, 0.1, 100)
     num_of_keypoints = []
+    folder_for_graphs = "Graphs"
+    os.makedirs(folder_for_graphs, exist_ok=True)
+    
     for name in images:
         print(f"entering file: {name}")
         keypoints_count = []
-        gray_bench_img=cv2.imread(name, 0)
+        bench_img = load_image(name)
+        gray_bench_img = cv2.cvtColor(bench_img, cv2.COLOR_BGR2GRAY)
         _,R_nms, _, orientations = harris_points_detector(gray_bench_img)
         for threshold in thresholds: 
             print(f"threshold_value:{threshold}")
@@ -226,10 +230,12 @@ def plot_thres_values(images, window_size = 7):
         plt.title(f'Keypoints vs. Threshold Value for {name}')
         plt.legend()
         plt.grid(True)
-        filename = get_filename(name, type = "plot")
-        plt.savefig(f"keypoints_{filename}.png")
+        
+        # Construct save path within "Graphs" folder
+        filename = get_filename(name, type="plot")
+        save_path = os.path.join(folder_for_graphs, f"keypoints_{filename}.png")  # New save path
+        plt.savefig(save_path) 
         plt.close()
-    
 
 
 
@@ -255,13 +261,12 @@ display_keypoints_count(harris_keypoints, orb_keypoints)
 keypoints_harris = cv2.drawKeypoints(bernie_img, harris_keypoints, 0, (0, 0, 255))
 keypoints_orb = cv2.drawKeypoints(bernie_img, orb_keypoints, 0, (0, 255, 0))
 
-# Visualize results
-# cv2.imshow("Original Image", resize_image(bernie_img))
-# cv2.imshow("Response", resize_image(R))
-# cv2.imshow("Response after NMS", resize_image(R_nms))
-
+# creating a folder to store the image comparing harris keypoints and ORB keypoints
+harris_orb_folder = "Harris Vs ORB"
+os.makedirs(harris_orb_folder, exist_ok=True)
+harris_orb_path = os.path.join(harris_orb_folder, "Harris keypoints VS Orb keypoints.jpg")
 comparison_harris_orb = np.concatenate((keypoints_harris, keypoints_orb), axis = 1)
-cv2.imwrite("Harris keypoints VS Orb keypoints.jpg", comparison_harris_orb)
+cv2.imwrite(harris_orb_path, comparison_harris_orb)
 
 test_images = [
     "bernie180.jpg",                    #0
@@ -275,6 +280,9 @@ test_images = [
     "darkerBernie.jpg"                  #8
 ]
 
+# creating folder titled "ratio matches" to store the feature matched images
+ratio_match_folder = "Ratio matches"
+os.makedirs(ratio_match_folder, exist_ok=True) 
 
 for test_image in test_images:
     test = load_image(test_image)
@@ -284,8 +292,10 @@ for test_image in test_images:
     # ssd_matches = ssd_feature_matcher(harris_descriptors, test_descriptors)
     ratio_matches = ratio_feature_matcher(harris_descriptors, test_descriptors)
     _, filename_ratio = get_filename(test_image, type = "harris")
+    
+    save_path = os.path.join(ratio_match_folder, filename_ratio)
     # visualize_matches(bernie_gray, harris_keypoints, test_grey, test_keypoints, ssd_matches, display=True, save_path=filename_ssd)
-    visualize_matches(bernie_img, harris_keypoints, test, test_keypoints, ratio_matches, save_path=filename_ratio)
+    visualize_matches(bernie_img, harris_keypoints, test, test_keypoints, ratio_matches, save_path=save_path)
 
 
 # Example usage
