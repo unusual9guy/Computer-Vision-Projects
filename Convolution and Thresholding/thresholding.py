@@ -2,10 +2,32 @@ import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 
-def displayImage(image, windowname):    
-    cv2.imshow(windowname, image) 
+def displayImage(images, windownames):
+    # Calculate the number of rows and columns needed for the subplot grid
+    n_images = len(images)
+    n_cols = 4  # Changed to 4 columns
+    n_rows = 2  # Fixed 2 rows for 8 images
+
+    # Create figure and subplots
+    fig = plt.figure(figsize=(20, 10))  # Adjusted figure size for better visibility
     
+    # Plot each image
+    for i in range(n_images):
+        plt.subplot(n_rows, n_cols, i + 1)
+        plt.imshow(images[i], cmap='gray')
+        plt.title(windownames[i])
+        plt.axis('off')
     
+    plt.tight_layout()
+
+    # Add keyboard event handler
+    def on_key(event):
+        if event.key == ' ' or event.key == 'tab':  # Space or tab
+            plt.close('all')
+    
+    fig.canvas.mpl_connect('key_press_event', on_key)
+    plt.show()
+
 def convolve_image(image, kernel):
     # Getting the  image and kernel dimensions
     image_height = image.shape[0]
@@ -141,8 +163,7 @@ def plot_histogram(gradient_magnitude_normal_avg, gradient_magnitude_weighted_av
 # MAIN -------------------------------------------------------------------------------------------------------------------------------
 
 # Loading the image
-image = cv2.imread('kitty.bmp', cv2.IMREAD_GRAYSCALE)  
-# image = cv2.imread('Screenshot 2024-02-21 183216.png', cv2.IMREAD_GRAYSCALE)
+image = cv2.imread('Images/cat.jpeg', cv2.IMREAD_GRAYSCALE)  
 
 if image is None:
     print('Could not read image')
@@ -193,28 +214,18 @@ kernel_size = 5 # have to figure out
 threshold_adaptive = adaptive_threshold_blur_subtract(gradient_magnitude, kernel_size, subtract_weight, initial_threshold)
 
 # creating a list of images to print
-images = [image, smoothed_image, gradient_x, gradient_y, gradient_magnitude, threshold_image_one]
+images = [image, smoothed_image, gradient_x, gradient_y, 
+          gradient_magnitude, threshold_image_one, threshold_image_two, threshold_adaptive]
 # creating a list of window names for the images
-windownames = ['Original image','Smoothed image','Gradient X', 'Gradient Y', 'Edge', 'Threshold Image']
+windownames = ['Original image', 'Smoothed image', 'Gradient X', 'Gradient Y', 
+              'Edge', 'Threshold Image - one', 'Threshold Image - two', 'Adaptive']
 
-# threshold images only
-t_images = [gradient_magnitude, threshold_image_one, threshold_image_two, threshold_adaptive]
-t_windownames = ['Edge', 'Threshold Image - one', 'Threshold Image - two', 'Adaptive']
+# Display all images
+displayImage(images, windownames)
 
-    
-for i in range(len(images)):
-    displayImage(images[i], windownames[i])
-    
 # Calculate and plot histogram
 plot_histogram(gradient_magnitude_normal_avg, gradient_magnitude_weighted_avg)
 
     
-while True:
-    key = cv2.waitKey(1)  # Capture key press
-
-    # Check if either spacebar (ASCII 32) or Tab (ASCII 9) is pressed
-    if key == ord(' ') or key == 9:  
-        break
-cv2.destroyAllWindows()
 
 
